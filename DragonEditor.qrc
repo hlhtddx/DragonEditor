@@ -1,0 +1,8 @@
+<RCC>
+  <qresource prefix="png">
+    <file>resources/png/folder-open.png</file>
+    <file>resources/png/handle-x.png</file>
+    <file>resources/png/setting.png</file>
+    <file>resources/png/play.png</file>
+  </qresource>
+</RCC>
