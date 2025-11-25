@@ -1,6 +1,8 @@
 [requires]
 qt/6.8.3
 harfbuzz/11.4.1
+boost/1.89.0
+gtest/1.17.0
 
 [generators]
 CMakeDeps

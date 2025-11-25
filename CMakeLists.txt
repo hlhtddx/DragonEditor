@@ -1,17 +1,24 @@
+# File: `CMakeLists.txt`
 cmake_minimum_required(VERSION 3.19)
 project(DragonEditor LANGUAGES CXX)
 
 set(CMAKE_AUTORCC ON)
+set(CMAKE_CXX_STANDARD 20)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets LinguistTools)
+find_package(Boost 1.89 REQUIRED COMPONENTS locale)
 
 qt_standard_project_setup()
+
+enable_testing()
+
+add_subdirectory(src)
 
 qt_add_executable(DragonEditor
         WIN32 MACOSX_BUNDLE
         main.cpp
-        mainwindow.cpp
-        mainwindow.h
+        MainWindow.cpp
+        MainWindow.h
         mainwindow.ui
         settings.ui
         DragonEditor.qrc
@@ -32,6 +39,12 @@ target_link_libraries(DragonEditor
         PRIVATE
         Qt::Core
         Qt::Widgets
+        Boost::locale
+        DragonData
+)
+
+include_directories(
+        ${Boost_INCLUDE_DIRS}
 )
 
 include(GNUInstallDirs)

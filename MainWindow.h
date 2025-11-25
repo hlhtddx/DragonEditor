@@ -33,6 +33,7 @@ private:
     QString gameFolderPath;
     QString dosboxExePath;
 
-    static bool checkGameFolderPath(const QString& selectedPath);
+    bool openGameFolderPath(const QString& path) const;
+
 };
 #endif // MAINWINDOW_H

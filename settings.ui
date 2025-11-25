@@ -16,6 +16,9 @@
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
     <layout class="QGridLayout" name="gridLayout">
+     <item row="1" column="1">
+      <widget class="QLineEdit" name="editDosboxPath"/>
+     </item>
      <item row="1" column="0">
       <widget class="QLabel" name="labelDosboxPath">
        <property name="text">
@@ -29,26 +32,6 @@
         <string>Browse</string>
        </property>
       </widget>
-     </item>
-     <item row="3" column="2">
-      <widget class="QPushButton" name="btnGamePath">
-       <property name="text">
-        <string>Browse</string>
-       </property>
-      </widget>
-     </item>
-     <item row="1" column="1">
-      <widget class="QLineEdit" name="editDosboxPath"/>
-     </item>
-     <item row="3" column="0">
-      <widget class="QLabel" name="labelGamePath">
-       <property name="text">
-        <string>Game Location:</string>
-       </property>
-      </widget>
-     </item>
-     <item row="3" column="1">
-      <widget class="QLineEdit" name="editGamePath"/>
      </item>
     </layout>
    </item>

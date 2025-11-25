@@ -81,4 +81,5 @@ CMakeLists.txt.user*
 .uic/
 /build*/
 **/.idea/
+outputs/
 /CMakeUserPresets.json

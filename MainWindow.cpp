@@ -10,8 +10,15 @@ MainWindow::MainWindow(QWidget* parent)
       , settings("hlhtddx.net", "DragonEditor")
 {
     gameFolderPath = settings.value("gameFolderPath", "").toString();
+    if (!openGameFolderPath(gameFolderPath))
+    {
+        qDebug() << "Invalid game folder path.";
+        gameFolderPath.clear();
+    }
+
     dosboxExePath = settings.value("dosboxExePath", "").toString();
     ui->setupUi(this);
+    ui->actionLaunch->setDisabled(gameFolderPath.isEmpty() || dosboxExePath.isEmpty());
 }
 
 MainWindow::~MainWindow()
@@ -40,8 +47,13 @@ void MainWindow::on_actionOpenGameFolder_triggered()
     if (fileDialog.exec() == QDialog::Accepted)
     {
         QString selectedPath = fileDialog.selectedFiles().first();
+        if (selectedPath == gameFolderPath)
+        {
+            qDebug() << "game folder path is same.";
+            return;
+        }
         qDebug() << "Selected Path:" << selectedPath;
-        if (!checkGameFolderPath(selectedPath))
+        if (!openGameFolderPath(selectedPath))
         {
             qDebug() << "Invalid game folder selected.";
             return;
@@ -67,9 +79,13 @@ void MainWindow::on_actionLaunch_triggered()
     QMessageBox::information(this, "Information", "Game launched successfully.");
 }
 
-bool MainWindow::checkGameFolderPath(const QString& selectedPath)
+bool MainWindow::openGameFolderPath(const QString& path) const
 {
-    if (selectedPath.isEmpty())
+    if (path.isEmpty())
+    {
+        return false;
+    }
+    if (path == gameFolderPath)
     {
         return false;
     }

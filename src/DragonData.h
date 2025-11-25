@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <cstring>
+#include <boost/locale/date_time.hpp>
 
 using namespace std;
 
@@ -14,6 +15,9 @@ namespace DragonData
 {
 namespace Raw
 {
+    constexpr size_t SCENARIO_COUNT = 4;
+    constexpr size_t SCENARIO_DATA_SIZE = 22208;
+
 #pragma pack(push, 1)
     struct Name
     {
@@ -141,10 +145,11 @@ namespace Raw
         GameData game_data;
         Force forces[24];
         Friendship friendship[24];
-        City cities[200];
-        uint8_t reserved_1[256];
+        City cities[192];
+        uint8_t reserved_1[512];
         Legion legions[128];
         Character characters[128];
+        uint8_t reserved_2[1024];
     };
 
     struct File
@@ -252,29 +257,6 @@ private:
     TroopType troop_type;
 };
 
-class CharacterStatus
-{
-public:
-    explicit CharacterStatus(const uint8_t status)
-        : status(status)
-    {
-    }
-
-    [[nodiscard]] uint8_t getStatus() const
-    {
-        return status;
-    }
-
-    [[nodiscard]] const string& getStatusString() const
-    {
-        return status_string;
-    }
-
-private:
-    uint8_t status;
-    string status_string;
-};
-
 class Force;
 class Character;
 class City;
@@ -307,9 +289,9 @@ public:
         return status;
     }
 
-    [[nodiscard]] const OptionalCharacterPtr& getWarlord() const
+    [[nodiscard]] const Character* getWarlord() const
     {
-        return warlord;
+        return warlord.get();
     }
 
     [[nodiscard]] const Character* getAdvisor() const
@@ -352,9 +334,9 @@ public:
         return city_count;
     }
 
-    [[nodiscard]] const OptionalCharacterPtr& getDiplomacyOwner() const
+    [[nodiscard]] const Character* getDiplomacyOwner() const
     {
-        return diplomacy_owner;
+        return diplomacy_owner.value_or(nullptr).get();
     }
 
 private:
@@ -370,11 +352,39 @@ private:
     uint8_t city_count;
     OptionalCharacterPtr diplomacy_owner;
 };
+enum class CharacterStatus
+{
+    Idle = 0,
+    Commander = 1,
+    InternalAffairsOfficer = 2,
+    Diplomat = 3,
+    DeadOrCaptured = 4,
+};
+
+inline CharacterStatus CharacterStatusFromRaw(const uint8_t v) noexcept
+{
+    switch (v)
+    {
+    case 0:
+        return CharacterStatus::Idle;
+    case 1:
+        return CharacterStatus::Commander;
+    case 2:
+        return CharacterStatus::InternalAffairsOfficer;
+    case 3:
+        return CharacterStatus::Diplomat;
+    case 4:
+        return CharacterStatus::DeadOrCaptured;
+    default:
+        return CharacterStatus::Idle;
+    }
+}
 
 class Character final : public NamedElement
 {
 public:
     Character(uint index, const Raw::Character& raw);
+
     void resolve(const ForcePtrVector& forces)
     {
         if (force_next_index < forces.size())
@@ -384,56 +394,63 @@ public:
 
         if (force_capture_index < forces.size())
         {
-            force_capture = forces[force_capture_index];
+            force_or_capture = forces[force_capture_index];
         }
 
-        if (force_origin_index < forces.size())
+        if (force_before_capture_index < forces.size())
         {
-            force_origin = forces[force_origin_index];
+            force_before_capture = forces[force_before_capture_index];
         }
+    }
 
-        if (status == 0)
+    const wstring& resolveStatus()
+    {
+        switch (status)
         {
-            if (force_or_capture.name.has_value())
+        case CharacterStatus::Idle:
+            if (force_or_capture.has_value())
             {
-                status.status_string = "待命";
+                status_string = L"待命";
             }
             else if (month_to_board > 0)
             {
-                status.status_string =std::to_string(month_to_board) + "月后登场";
+                status_string = std::to_wstring(month_to_board) + L"月后登场";
             }
             else
             {
-                status.status_string = "流亡";
+                status_string = L"流亡";
             }
-        }
-        else if (st == 1)
-        {
-            status.status_string = "军团长";
-        }
-        else if (st == 2)
-        {
-            status.status_string = "内政官";
-        }
-        else if (st == 3)
-        {
-            status.status_string = "外交官";
-        }
-        else if (st == 4)
-        {
-            if (force_or_capture.name.has_value())
+            break;
+        case CharacterStatus::Commander:
+            status_string = L"军团长";
+            break;
+        case CharacterStatus::InternalAffairsOfficer:
+            status_string = L"内政官";
+            break;
+        case CharacterStatus::Diplomat:
+            status_string = L"外交官";
+            break;
+        case CharacterStatus::DeadOrCaptured:
+            if (force_or_capture.has_value())
             {
-                status.status_string = "俘:" + force_or_capture.name.value();
+                status_string = wstring(L"俘:") + force_or_capture.value()->getName();
             }
             else
             {
-                status.status_string = "死亡";
+                status_string = L"死亡";
             }
+            break;
+        default:
+            status_string = L"未知";
+            break;
         }
-        else
-        {
-            status.status_string = "未知";
-        }
+
+        return status_string;
+    }
+
+    [[nodiscard]] const wstring& getStatusString() const
+    {
+        return status_string;
     }
 
     [[nodiscard]] uint8_t getProperty() const
@@ -498,12 +515,12 @@ public:
 
     [[nodiscard]] const Force* getForceCapture() const
     {
-        return force_capture.value_or(nullptr).get();
+        return force_or_capture.value_or(nullptr).get();
     }
 
     [[nodiscard]] const Force* getForceOrigin() const
     {
-        return force_origin.value_or(nullptr).get();
+        return force_before_capture.value_or(nullptr).get();
     }
 
     [[nodiscard]] bool isToSuicide() const
@@ -532,12 +549,13 @@ private:
     uint8_t command;
     uint8_t politics;
     CharacterStatus status;
+    wstring status_string;
     uint8_t month_to_board;
-    OptionalForcePtr force_capture;
-    OptionalForcePtr force_origin;
+    OptionalForcePtr force_or_capture;
+    OptionalForcePtr force_before_capture;
     OptionalForcePtr force_next;
     uint8_t force_capture_index;
-    uint8_t force_origin_index;
+    uint8_t force_before_capture_index;
     uint8_t force_next_index;
     bool to_suicide;
     bool is_warlord;
@@ -548,23 +566,19 @@ class City final : public NamedElement
 {
 public:
     City(uint index, const Raw::City& raw, const CharacterPtrVector& characters);
+
     void resolve(const ForcePtrVector& forces)
     {
         if (force_index < forces.size())
         {
             force = forces[force_index];
         }
-
-        if (affairs_owner_index < characters.size())
-        {
-            affairs_owner = characters[affairs_owner_index];
-        }
     }
 
 private:
     uint8_t force_index;
     OptionalForcePtr force;
-    string name;
+    wstring name;
     Axis axis;
     uint16_t max_productivity{};
     uint16_t cur_productivity{};
@@ -578,7 +592,8 @@ private:
 class Legion final : public NamedElement
 {
 public:
-    Legion(uint index, const Raw::Legion& raw, const ForcePtrVector& forces, const CharacterPtrVector& characters, const CityPtrVector& cities);
+    Legion(uint index, const Raw::Legion& raw, const ForcePtrVector& forces, const CharacterPtrVector& characters,
+           const CityPtrVector& cities);
 
 private:
     uint8_t state;
@@ -611,6 +626,7 @@ class GameData
 {
 public:
     explicit GameData(const Raw::GameData& raw);
+
     void resolve(const ForcePtrVector& forces)
     {
         if (force_index < forces.size())
@@ -636,7 +652,7 @@ public:
 
     [[nodiscard]] const Force* getForce() const
     {
-        return force.get();
+        return force.value_or(nullptr).get();
     }
 
     [[nodiscard]] uint8_t getTrust() const
@@ -695,14 +711,50 @@ private:
     wstring name;
 };
 
-constexpr size_t SCENARIO_COUNT = 4;
-constexpr size_t SCENARIO_DATA_SIZE = 22208;
-
 class Scenario
 {
 public:
     explicit Scenario(const Raw::Scenario& raw);
-    void resolve();
+
+    void resolve()
+    {
+        game_data.resolve(forces);
+
+        for (const auto& item : cities)
+        {
+            item->resolve(forces);
+        }
+
+        for (const auto& item : characters)
+        {
+            item->resolve(forces);
+        }
+    }
+
+    [[nodiscard]] const GameData& getGameData() const
+    {
+        return game_data;
+    }
+
+    [[nodiscard]] const ForcePtrVector& getForces() const
+    {
+        return forces;
+    }
+
+    [[nodiscard]] const CityPtrVector& getCities() const
+    {
+        return cities;
+    }
+
+    [[nodiscard]] const LegionPtrVector& getLegions() const
+    {
+        return legions;
+    }
+
+    [[nodiscard]] const CharacterPtrVector& getCharacters() const
+    {
+        return characters;
+    }
 
 private:
     GameData game_data;
@@ -710,48 +762,92 @@ private:
     CityPtrVector cities;
     LegionPtrVector legions;
     CharacterPtrVector characters;
+};
 
-    [[nodiscard]] static Scenario from_bytes(const char* data, size_t size)
+class ScenarioFile
+{
+public:
+    virtual ~ScenarioFile() = default;
+    virtual bool loadFile(const fs::path& filepath);
+
+    [[nodiscard]] const fs::path& getPath() const
     {
-        if (SCENARIO_DATA_SIZE > size)
-        {
-            throw std::runtime_error("scenario data out of range");
-        }
-        const auto* raw = reinterpret_cast<const Raw::Scenario*>(data);
-        return Scenario(*raw);
+        return file_path;
     }
-};
 
-class ScenarioInfo
-{
-    std::string name;
-    std::string filename;
-    std::string description;
-};
-
-class ScenarioFile final
-{
-public:
-    explicit ScenarioFile(const Raw::File& raw);
-    static std::vector<Scenario> load_file(const fs::path& filepath);
+    [[nodiscard]] const std::vector<Scenario>& getScenarios() const
+    {
+        return scenarios;
+    }
 
 private:
-    std::string name;
-    std::string description;
+    fs::path file_path;
     std::vector<Scenario> scenarios;
-    std::vector<Scenario> saved;
 };
 
-class DragonGame
+class SavedScenarioFile final : public ScenarioFile
 {
 public:
-    explicit DragonGame(string& gameFolderPath);
-    ~DragonGame() = default;
-
-protected:
-    bool OpenGameFolder();
+    ~SavedScenarioFile() override = default;
+    bool loadFile(const fs::path& filepath) override;
 
 private:
-    string gameFolderPath;
+    fs::file_time_type timestamp;
 };
+
+class DragonGameObject
+{
+public:
+    bool openGameFolder(string& folder_path);
+    [[nodiscard]] bool applySavedFile(const SavedScenarioFile& saved_file) const;
+
+    [[nodiscard]] const std::vector<ScenarioFile>& get_scenario_files() const
+    {
+        return scenario_files;
+    }
+
+    [[nodiscard]] const std::vector<SavedScenarioFile>& get_saved_files() const
+    {
+        return saved_files;
+    }
+
+    [[nodiscard]] const SavedScenarioFile& get_default_saved_file() const
+    {
+        return default_saved_file;
+    }
+
+private:
+    fs::path gameFolderPath;
+    std::vector<ScenarioFile> scenario_files;
+    std::vector<SavedScenarioFile> saved_files;
+    SavedScenarioFile default_saved_file;
+};
+
+
+std::wostream& operator<<(std::wostream& os, const NamedElement& n);
+
+std::wostream& operator<<(std::wostream& os, const Axis& a);
+
+std::wostream& operator<<(std::wostream& os, const Troop& t);
+
+std::wostream& operator<<(std::wostream& os, const Conscription& c);
+
+std::wostream& operator<<(std::wostream& os, const Character& item);
+
+std::wostream& operator<<(std::wostream& os, const Force& item);
+
+std::wostream& operator<<(std::wostream& os, const City& item);
+
+std::wostream& operator<<(std::wostream& os, const Legion& item);
+
+std::wostream& operator<<(std::wostream& os, const GameData& item);
+
+std::wostream& operator<<(std::wostream& os, const Scenario& item);
+
+std::wostream& operator<<(std::wostream& os, const ScenarioFile& item);
+
+std::wostream& operator<<(std::wostream& os, const SavedScenarioFile& item);
+
+std::wostream& operator<<(std::wostream& os, const DragonGameObject& item);
+
 }
