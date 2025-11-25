@@ -1,0 +1,757 @@
+#pragma once
+#include <string>
+#include <array>
+#include <vector>
+#include <unordered_map>
+#include <optional>
+#include <filesystem>
+#include <stdexcept>
+#include <cstring>
+
+using namespace std;
+
+namespace DragonData
+{
+namespace Raw
+{
+#pragma pack(push, 1)
+    struct Name
+    {
+        char name[6];
+    };
+
+    struct Axis
+    {
+        uint16_t x;
+        uint16_t y;
+    };
+
+    struct Troop
+    {
+        uint16_t count;
+        uint16_t troop_type;
+    };
+
+    struct Force
+    {
+        uint8_t status;
+        uint8_t warlord;
+        uint8_t advisor;
+        uint8_t capital;
+        uint16_t cavalries;
+        uint16_t infantries;
+        uint16_t archers;
+        uint8_t reserved_1[14];
+        uint8_t subordinates;
+        uint8_t reserved_2[7];
+        uint8_t money[3]; // 24-bit
+        uint8_t city_count;
+        uint8_t reserved_3[22];
+        uint8_t diplomacy_owner;
+        uint8_t reserved_4[5];
+    };
+
+    struct City
+    {
+        uint8_t reserved_1;
+        uint8_t force;
+        Name name;
+        Axis axis;
+        uint16_t max_productivity;
+        uint16_t cur_productivity;
+        uint8_t increase;
+        uint8_t anti_disaster;
+        uint8_t soldiers;
+        uint8_t reserved_2[4];
+        uint16_t city_type;
+        uint8_t affairs_owner;
+        uint8_t reserved_3[6];
+    };
+
+    struct Legion
+    {
+        uint8_t state;
+        uint8_t force;
+        uint8_t leader;
+        uint8_t reserved_1;
+        uint16_t total_soldier;
+        uint8_t morale;
+        uint8_t reserved_2[7];
+        Axis current_axis;
+        uint8_t reserved_3[4];
+        Axis target_axis;
+        uint8_t reserved_4[6];
+        uint8_t target_city;
+        uint8_t reserved_5[7];
+        Troop troops[6];
+    };
+
+    struct Character
+    {
+        uint8_t property;
+        uint8_t avatar;
+        Name name;
+        Name alias;
+        uint8_t siege_ability;
+        uint8_t field_ability;
+        uint8_t naval_ability;
+        uint8_t battle_ability;
+        uint8_t command;
+        uint8_t politics;
+        uint8_t reserved_1[3];
+        uint8_t status;
+        uint8_t month_to_board;
+        uint8_t force_next;
+        uint8_t reserved_2[2];
+        uint8_t force_or_capture;
+        uint8_t force_origin;
+        uint8_t reserved_3[2];
+    };
+
+    struct GameData
+    {
+        uint8_t reserved_1[3];
+        uint8_t day;
+        uint8_t month;
+        uint8_t reserved_2;
+        uint16_t year;
+        uint8_t reserved_3[7];
+        uint8_t force;
+        uint8_t trust;
+        uint8_t number;
+        uint8_t reserved_4[6];
+        uint16_t cur_tax_rate;
+        uint16_t cur_conscription[3];
+        uint16_t next_tax_rate;
+        uint16_t next_conscription[3];
+        uint8_t reserved_5[18];
+        uint8_t total_forces;
+        uint8_t reserved_6[5];
+        char name[32];
+        uint8_t reserved_7[32];
+    };
+
+    struct Friendship
+    {
+        uint8_t friendship[24];
+    };
+
+    struct Scenario
+    {
+        GameData game_data;
+        Force forces[24];
+        Friendship friendship[24];
+        City cities[200];
+        uint8_t reserved_1[256];
+        Legion legions[128];
+        Character characters[128];
+    };
+
+    struct File
+    {
+        Scenario scenarios[4];
+    };
+
+#pragma pack(pop)
+}
+
+namespace fs = filesystem;
+
+class Element
+{
+public:
+    virtual ~Element() = default;
+
+    explicit Element(const uint index)
+        : index(index)
+    {
+    }
+
+    [[nodiscard]] uint8_t getIndex() const
+    {
+        return index;
+    }
+
+private:
+    uint index;
+};
+
+wstring name_to_utf8(const char* s, size_t len);
+
+class NamedElement : Element
+{
+public:
+    explicit NamedElement(const uint index)
+        : Element(index)
+    {
+    }
+
+    NamedElement(const uint index, const char* s, const size_t len)
+        : Element(index)
+          , name(name_to_utf8(s, len))
+    {
+    }
+
+    NamedElement(const uint index, const NamedElement& other)
+        : Element(index)
+          , name(other.name)
+    {
+    }
+
+protected:
+    wstring name;
+
+public:
+    [[nodiscard]] virtual const wstring& getName() const
+    {
+        return name;
+    }
+};
+
+class Axis : public Raw::Axis
+{
+public:
+    explicit Axis(const Raw::Axis& raw) : Raw::Axis(raw)
+    {
+    }
+};
+
+enum TroopType : uint16_t
+{
+    Infantry = 0,
+    Archer = 1,
+    Cavalry = 2,
+    Spearman = 3,
+    Scout = 4,
+    Cannon = 5,
+    Naval = 6,
+    Siege = 7
+};
+
+class Troop
+{
+public:
+    explicit Troop(const Raw::Troop& raw)
+    {
+        count = raw.count;
+        troop_type = static_cast<TroopType>(raw.troop_type);
+    }
+
+    [[nodiscard]] uint16_t getCount() const
+    {
+        return count;
+    }
+
+    [[nodiscard]] TroopType getTroopType() const
+    {
+        return troop_type;
+    }
+
+private:
+    uint16_t count;
+    TroopType troop_type;
+};
+
+class CharacterStatus
+{
+public:
+    explicit CharacterStatus(const uint8_t status)
+        : status(status)
+    {
+    }
+
+    [[nodiscard]] uint8_t getStatus() const
+    {
+        return status;
+    }
+
+    [[nodiscard]] const string& getStatusString() const
+    {
+        return status_string;
+    }
+
+private:
+    uint8_t status;
+    string status_string;
+};
+
+class Force;
+class Character;
+class City;
+class Legion;
+
+typedef shared_ptr<Force> ForcePtr;
+typedef shared_ptr<Character> CharacterPtr;
+typedef shared_ptr<City> CityPtr;
+typedef shared_ptr<Legion> LegionPtr;
+
+typedef optional<ForcePtr> OptionalForcePtr;
+typedef optional<CharacterPtr> OptionalCharacterPtr;
+typedef optional<CityPtr> OptionalCityPtr;
+typedef optional<LegionPtr> OptionalLegionPtr;
+
+
+typedef vector<CharacterPtr> CharacterPtrVector;
+typedef vector<CityPtr> CityPtrVector;
+typedef vector<ForcePtr> ForcePtrVector;
+typedef vector<LegionPtr> LegionPtrVector;
+
+
+class Force final : public NamedElement
+{
+public:
+    Force(uint index, const Raw::Force& raw, const CharacterPtrVector& characters, const CityPtrVector& cities);
+
+    [[nodiscard]] uint8_t getStatus() const
+    {
+        return status;
+    }
+
+    [[nodiscard]] const OptionalCharacterPtr& getWarlord() const
+    {
+        return warlord;
+    }
+
+    [[nodiscard]] const Character* getAdvisor() const
+    {
+        return advisor.value_or(nullptr).get();
+    }
+
+    [[nodiscard]] const City* getCapital() const
+    {
+        return capital.get();
+    }
+
+    [[nodiscard]] uint16_t getCavalries() const
+    {
+        return cavalries;
+    }
+
+    [[nodiscard]] uint16_t getInfantries() const
+    {
+        return infantries;
+    }
+
+    [[nodiscard]] uint16_t getArchers() const
+    {
+        return archers;
+    }
+
+    [[nodiscard]] uint8_t getSubordinates() const
+    {
+        return subordinates;
+    }
+
+    [[nodiscard]] int32_t getMoney() const
+    {
+        return money;
+    }
+
+    [[nodiscard]] uint8_t getCities() const
+    {
+        return city_count;
+    }
+
+    [[nodiscard]] const OptionalCharacterPtr& getDiplomacyOwner() const
+    {
+        return diplomacy_owner;
+    }
+
+private:
+    uint8_t status;
+    CharacterPtr warlord;
+    OptionalCharacterPtr advisor;
+    CityPtr capital;
+    uint16_t cavalries;
+    uint16_t infantries;
+    uint16_t archers;
+    uint8_t subordinates;
+    int32_t money;
+    uint8_t city_count;
+    OptionalCharacterPtr diplomacy_owner;
+};
+
+class Character final : public NamedElement
+{
+public:
+    Character(uint index, const Raw::Character& raw);
+    void resolve(const ForcePtrVector& forces)
+    {
+        if (force_next_index < forces.size())
+        {
+            force_next = forces[force_next_index];
+        }
+
+        if (force_capture_index < forces.size())
+        {
+            force_capture = forces[force_capture_index];
+        }
+
+        if (force_origin_index < forces.size())
+        {
+            force_origin = forces[force_origin_index];
+        }
+
+        if (status == 0)
+        {
+            if (force_or_capture.name.has_value())
+            {
+                status.status_string = "待命";
+            }
+            else if (month_to_board > 0)
+            {
+                status.status_string =std::to_string(month_to_board) + "月后登场";
+            }
+            else
+            {
+                status.status_string = "流亡";
+            }
+        }
+        else if (st == 1)
+        {
+            status.status_string = "军团长";
+        }
+        else if (st == 2)
+        {
+            status.status_string = "内政官";
+        }
+        else if (st == 3)
+        {
+            status.status_string = "外交官";
+        }
+        else if (st == 4)
+        {
+            if (force_or_capture.name.has_value())
+            {
+                status.status_string = "俘:" + force_or_capture.name.value();
+            }
+            else
+            {
+                status.status_string = "死亡";
+            }
+        }
+        else
+        {
+            status.status_string = "未知";
+        }
+    }
+
+    [[nodiscard]] uint8_t getProperty() const
+    {
+        return property;
+    }
+
+    [[nodiscard]] uint8_t getAvatar() const
+    {
+        return avatar;
+    }
+
+    [[nodiscard]] const wstring& getAlias() const
+    {
+        return alias;
+    }
+
+    [[nodiscard]] uint8_t getSiegeAbility() const
+    {
+        return siege_ability;
+    }
+
+    [[nodiscard]] uint8_t getFieldAbility() const
+    {
+        return field_ability;
+    }
+
+    [[nodiscard]] uint8_t getNavalAbility() const
+    {
+        return naval_ability;
+    }
+
+    [[nodiscard]] uint8_t getBattleAbility() const
+    {
+        return battle_ability;
+    }
+
+    [[nodiscard]] uint8_t getCommand() const
+    {
+        return command;
+    }
+
+    [[nodiscard]] uint8_t getPolitics() const
+    {
+        return politics;
+    }
+
+    [[nodiscard]] const CharacterStatus& getStatus() const
+    {
+        return status;
+    }
+
+    [[nodiscard]] uint8_t getMonthToBoard() const
+    {
+        return month_to_board;
+    }
+
+    [[nodiscard]] const Force* getForceNext() const
+    {
+        return force_next.value_or(nullptr).get();
+    }
+
+    [[nodiscard]] const Force* getForceCapture() const
+    {
+        return force_capture.value_or(nullptr).get();
+    }
+
+    [[nodiscard]] const Force* getForceOrigin() const
+    {
+        return force_origin.value_or(nullptr).get();
+    }
+
+    [[nodiscard]] bool isToSuicide() const
+    {
+        return to_suicide;
+    }
+
+    [[nodiscard]] bool isWarlord() const
+    {
+        return is_warlord;
+    }
+
+    [[nodiscard]] bool isToBoard() const
+    {
+        return to_board;
+    }
+
+private:
+    uint8_t property;
+    uint8_t avatar;
+    wstring alias;
+    uint8_t siege_ability;
+    uint8_t field_ability;
+    uint8_t naval_ability;
+    uint8_t battle_ability;
+    uint8_t command;
+    uint8_t politics;
+    CharacterStatus status;
+    uint8_t month_to_board;
+    OptionalForcePtr force_capture;
+    OptionalForcePtr force_origin;
+    OptionalForcePtr force_next;
+    uint8_t force_capture_index;
+    uint8_t force_origin_index;
+    uint8_t force_next_index;
+    bool to_suicide;
+    bool is_warlord;
+    bool to_board;
+};
+
+class City final : public NamedElement
+{
+public:
+    City(uint index, const Raw::City& raw, const CharacterPtrVector& characters);
+    void resolve(const ForcePtrVector& forces)
+    {
+        if (force_index < forces.size())
+        {
+            force = forces[force_index];
+        }
+
+        if (affairs_owner_index < characters.size())
+        {
+            affairs_owner = characters[affairs_owner_index];
+        }
+    }
+
+private:
+    uint8_t force_index;
+    OptionalForcePtr force;
+    string name;
+    Axis axis;
+    uint16_t max_productivity{};
+    uint16_t cur_productivity{};
+    uint8_t increase{};
+    uint8_t anti_disaster{};
+    uint8_t soldiers{};
+    uint16_t city_type{};
+    OptionalCharacterPtr affairs_owner;
+};
+
+class Legion final : public NamedElement
+{
+public:
+    Legion(uint index, const Raw::Legion& raw, const ForcePtrVector& forces, const CharacterPtrVector& characters, const CityPtrVector& cities);
+
+private:
+    uint8_t state;
+    ForcePtr force;
+    CharacterPtr leader;
+    CityPtr target_city;
+    uint16_t total_soldier;
+    uint8_t morale;
+    Axis current_axis;
+    Axis target_axis;
+    vector<Troop> troops;
+};
+
+class Conscription final
+{
+public:
+    uint16_t cavalry;
+    uint16_t infantry;
+    uint16_t archer;
+
+    Conscription(const uint16_t cavalry, const uint16_t infantry, const uint16_t archer)
+        : cavalry(cavalry)
+          , infantry(infantry)
+          , archer(archer)
+    {
+    }
+};
+
+class GameData
+{
+public:
+    explicit GameData(const Raw::GameData& raw);
+    void resolve(const ForcePtrVector& forces)
+    {
+        if (force_index < forces.size())
+        {
+            force = forces[force_index];
+        }
+    }
+
+    [[nodiscard]] uint8_t getDay() const
+    {
+        return day;
+    }
+
+    [[nodiscard]] uint8_t getMonth() const
+    {
+        return month;
+    }
+
+    [[nodiscard]] uint16_t getYear() const
+    {
+        return year;
+    }
+
+    [[nodiscard]] const Force* getForce() const
+    {
+        return force.get();
+    }
+
+    [[nodiscard]] uint8_t getTrust() const
+    {
+        return trust;
+    }
+
+    [[nodiscard]] uint8_t getNumber() const
+    {
+        return number;
+    }
+
+    [[nodiscard]] uint16_t getCurTaxRate() const
+    {
+        return cur_tax_rate;
+    }
+
+    [[nodiscard]] const Conscription& getCurConscription() const
+    {
+        return cur_conscription;
+    }
+
+    [[nodiscard]] uint16_t getNextTaxRate() const
+    {
+        return next_tax_rate;
+    }
+
+    [[nodiscard]] const Conscription& getNextConscription() const
+    {
+        return next_conscription;
+    }
+
+    [[nodiscard]] uint8_t getTotalForces() const
+    {
+        return total_forces;
+    }
+
+    [[nodiscard]] const wstring& getName() const
+    {
+        return name;
+    }
+
+private:
+    uint8_t day;
+    uint8_t month;
+    uint16_t year;
+    uint8_t force_index;
+    OptionalForcePtr force;
+    uint8_t trust;
+    uint8_t number;
+    uint16_t cur_tax_rate;
+    Conscription cur_conscription;
+    uint16_t next_tax_rate;
+    Conscription next_conscription;
+    uint8_t total_forces;
+    wstring name;
+};
+
+constexpr size_t SCENARIO_COUNT = 4;
+constexpr size_t SCENARIO_DATA_SIZE = 22208;
+
+class Scenario
+{
+public:
+    explicit Scenario(const Raw::Scenario& raw);
+    void resolve();
+
+private:
+    GameData game_data;
+    ForcePtrVector forces;
+    CityPtrVector cities;
+    LegionPtrVector legions;
+    CharacterPtrVector characters;
+
+    [[nodiscard]] static Scenario from_bytes(const char* data, size_t size)
+    {
+        if (SCENARIO_DATA_SIZE > size)
+        {
+            throw std::runtime_error("scenario data out of range");
+        }
+        const auto* raw = reinterpret_cast<const Raw::Scenario*>(data);
+        return Scenario(*raw);
+    }
+};
+
+class ScenarioInfo
+{
+    std::string name;
+    std::string filename;
+    std::string description;
+};
+
+class ScenarioFile final
+{
+public:
+    explicit ScenarioFile(const Raw::File& raw);
+    static std::vector<Scenario> load_file(const fs::path& filepath);
+
+private:
+    std::string name;
+    std::string description;
+    std::vector<Scenario> scenarios;
+    std::vector<Scenario> saved;
+};
+
+class DragonGame
+{
+public:
+    explicit DragonGame(string& gameFolderPath);
+    ~DragonGame() = default;
+
+protected:
+    bool OpenGameFolder();
+
+private:
+    string gameFolderPath;
+};
+}
